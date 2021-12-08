@@ -96,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_v_num', default=None, type=int)
 
     # Training Info
-    parser.add_argument('--dataset', default='standard_data', type=str)
+    parser.add_argument('--dataset', default='noisy_iemocap', type=str)
     parser.add_argument('--data_dir', default='ref/data', type=str)
     parser.add_argument('--model_name', default='standard_net', type=str)
     parser.add_argument('--loss', default='bce', type=str)
@@ -121,9 +121,5 @@ if __name__ == '__main__':
     parser.set_defaults(gpus=1)
 
     args = parser.parse_args()
-
-    # List Arguments
-    args.mean_sen = [0.485, 0.456, 0.406]
-    args.std_sen = [0.229, 0.224, 0.225]
 
     main(args)

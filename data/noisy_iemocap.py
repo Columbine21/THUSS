@@ -22,7 +22,7 @@ from torchvision import transforms
 from sklearn.model_selection import train_test_split
 
 
-class Iemocap(data.Dataset):
+class NoisyIemocap(data.Dataset):
     def __init__(self, data_dir=r'data/ref',
                  class_num=4,
                  train=True,
