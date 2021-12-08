@@ -17,6 +17,8 @@ import torch
 import importlib
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
+from transformers import AdamW
+from utils.metrics import ConfusionMetrics
 
 import pytorch_lightning as pl
 
@@ -27,25 +29,27 @@ class MInterface(pl.LightningModule):
         self.save_hyperparameters()
         self.load_model()
         self.configure_loss()
+        self.valid_met = ConfusionMetrics(self.hparams.num_labels)
+        self.test_met = ConfusionMetrics(self.hparams.num_labels)
 
-    def forward(self, img):
-        return self.model(img)
+    def forward(self, audio):
+        return self.model(audio)
 
     def training_step(self, batch, batch_idx):
-        img, labels, filename = batch
-        out = self(img)
+        audio, labels = batch
+        out = self(audio)
         loss = self.loss_function(out, labels)
         self.log('loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        img, labels, filename = batch
-        out = self(img)
+        input_ids, input_mask, segment_ids, labels = batch
+        labels = labels.squeeze()
+        out = self(input_ids, input_mask, segment_ids).logits
         loss = self.loss_function(out, labels)
-        label_digit = labels.argmax(axis=1)
         out_digit = out.argmax(axis=1)
 
-        correct_num = sum(label_digit == out_digit).cpu().item()
+        correct_num = sum(labels == out_digit).cpu().item()
 
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log('val_acc', correct_num/len(out_digit),
@@ -54,46 +58,62 @@ class MInterface(pl.LightningModule):
         return (correct_num, len(out_digit))
 
     def test_step(self, batch, batch_idx):
-        # Here we just reuse the validation_step for testing
-        return self.validation_step(batch, batch_idx)
+        input_ids, input_mask, segment_ids, labels = batch
+        labels = labels.squeeze()
+        out = self(input_ids, input_mask, segment_ids).logits
+        loss = self.loss_function(out, labels)
+        out_digit = out.argmax(axis=1)
+
+        correct_num = sum(labels == out_digit).cpu().item()
+
+        for l, p in zip(labels, out):
+            # add to global validation metrics.
+            self.test_met.fit(int(l), int(p.argmax()))
+
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('val_acc', correct_num/len(out_digit),
+                 on_step=False, on_epoch=True, prog_bar=True)
+
+        return (correct_num, len(out_digit))
 
     def on_validation_epoch_end(self):
         # Make the Progress Bar leave there
         self.print('')
 
-    def configure_optimizers(self):
-        if hasattr(self.hparams, 'weight_decay'):
-            weight_decay = self.hparams.weight_decay
-        else:
-            weight_decay = 0
-        optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.hparams.lr, weight_decay=weight_decay)
+    def on_test_epoch_end(self):
+        """Report metrics."""
 
-        if self.hparams.lr_scheduler is None:
-            return optimizer
-        else:
-            if self.hparams.lr_scheduler == 'step':
-                scheduler = lrs.StepLR(optimizer,
-                                       step_size=self.hparams.lr_decay_steps,
-                                       gamma=self.hparams.lr_decay_rate)
-            elif self.hparams.lr_scheduler == 'cosine':
-                scheduler = lrs.CosineAnnealingLR(optimizer,
-                                                  T_max=self.hparams.lr_decay_steps,
-                                                  eta_min=self.hparams.lr_decay_min_lr)
-            else:
-                raise ValueError('Invalid lr_scheduler type!')
-            return [optimizer], [scheduler]
+        self.test_met.WriteConfusionSeaborn(labels=['neg', 'neu', 'pos'], outpath='conf_m.png')
+        self.log('test_UAR', self.test_met.uar, logger=True)
+        self.log('test_WAR', self.test_met.war, logger=True)
+        self.log('test_macroF1', self.test_met.macroF1, logger=True)
+        self.log('test_microF1', self.test_met.microF1, logger=True)
+
+        print(f"""++++ Classification Metrics ++++
+                  UAR: {self.test_met.uar:.4f}
+                  WAR: {self.test_met.war:.4f}
+                  macroF1: {self.test_met.macroF1:.4f}
+                  microF1: {self.test_met.microF1:.4f}""")
+
+    def configure_optimizers(self):
+        # OPTIMIZER: finetune Bert Parameters.
+        bert_no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+        bert_params = list(self.model.clf.bert.named_parameters())
+
+        bert_params_decay = [p for n, p in bert_params if not any(nd in n for nd in bert_no_decay)]
+        bert_params_no_decay = [p for n, p in bert_params if any(nd in n for nd in bert_no_decay)]
+        model_params_other = [p for n, p in list(self.model.named_parameters()) if 'bert' not in n]
+
+        optimizer_grouped_parameters = [
+                {'params': bert_params_decay, 'weight_decay': self.hparams.weight_decay_bert, 'lr': self.hparams.learning_rate_bert},
+                {'params': bert_params_no_decay, 'weight_decay': 0.0, 'lr': self.hparams.learning_rate_bert},
+                {'params': model_params_other, 'weight_decay': self.hparams.weight_decay_other, 'lr': self.hparams.learning_rate_other}
+            ]
+        optimizer = AdamW(optimizer_grouped_parameters)
+        return optimizer
 
     def configure_loss(self):
-        loss = self.hparams.loss.lower()
-        if loss == 'mse':
-            self.loss_function = F.mse_loss
-        elif loss == 'l1':
-            self.loss_function = F.l1_loss
-        elif loss == 'bce':
-            self.loss_function = F.binary_cross_entropy
-        else:
-            raise ValueError("Invalid Loss Type!")
+        self.loss_function = F.cross_entropy
 
     def load_model(self):
         name = self.hparams.model_name

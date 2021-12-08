@@ -48,13 +48,16 @@ class NoisyIemocap(Dataset):
             metainfo = json.load(f) #{wavname: {emotion: number}} or {wavname: emotion}
 
         if self.mode == 'train':
-            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) for x in metainfo['Train'].keys()]
+            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav'))
+                                    for x in metainfo['Train'].keys()]
             self.dataset = t_dataset[:int(0.9*len(t_dataset))]
         elif self.mode == 'valid':
-            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) for x in metainfo['Train'].keys()]
+            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) 
+                                    for x in metainfo['Train'].keys()]
             self.dataset = t_dataset[int(0.9*len(t_dataset)):]
         else:
-            self.dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) for x in metainfo['Test'].keys()]
+            self.dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) 
+                                    for x in metainfo['Test'].keys()]
         #Print statistics:
         print(f'Total {len(self.dataset)} examples')
 

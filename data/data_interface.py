@@ -23,7 +23,7 @@ from torch.utils.data.sampler import WeightedRandomSampler
 class DInterface(pl.LightningDataModule):
 
     def __init__(self, num_workers=8,
-                 dataset='',
+                 dataset='noisy_iemocap',
                  **kwargs):
         super().__init__()
         self.num_workers = num_workers
@@ -35,12 +35,12 @@ class DInterface(pl.LightningDataModule):
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.trainset = self.instancialize(train=True)
-            self.valset = self.instancialize(train=False)
+            self.trainset = self.instancialize(mode='train')
+            self.valset = self.instancialize(mode='valid')
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.testset = self.instancialize(train=False)
+            self.testset = self.instancialize(mode='test')
 
         # # If you need to balance your data using Pytorch Sampler,
         # # please uncomment the following lines.
