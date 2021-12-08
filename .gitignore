@@ -130,5 +130,5 @@ dmypy.json
 source/iemocap/Audio_16k
 source/demand
 source/iemocap/metalabel.json
-source/iemocap/labels_sess
+*labels_sess
 source/noise_iemocap/NPARK-2

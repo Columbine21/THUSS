@@ -20,6 +20,7 @@
     DInterface can be seen as transparent to all your args.    
 """
 import os
+import numpy as np
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning import Trainer
@@ -56,23 +57,33 @@ def load_callbacks():
 
 def main(args):
     pl.seed_everything(args.seed)
-    load_path = load_model_path_by_args(args)
-    data_module = DInterface(**vars(args))
 
-    if load_path is None:
-        model = MInterface(**vars(args))
-    else:
-        model = MInterface(**vars(args))
-        args.resume_from_checkpoint = load_path
+    nfolds = len(os.listdir(args.labeldir))
+    for foldlabel in os.listdir(args.labeldir):
+        assert foldlabel[-5:] == '.json'
+
+    metrics, confusion = np.zeros((4, args.num_exps, nfolds)), 0.
+    for exp in range(args.num_exps):
+        for ifold, foldlabel in enumerate(os.listdir(args.labeldir)):
+            print (f"Running experiment {exp+1} / {args.num_exps}, fold {ifold+1} / {nfolds}...")
+            args.label_sess_no = ifold + 1
+            load_path = load_model_path_by_args(args)
+            data_module = DInterface(**vars(args))
+
+            if load_path is None:
+                model = MInterface(**vars(args))
+            else:
+                model = MInterface(**vars(args))
+                args.resume_from_checkpoint = load_path
         
-    args.callbacks = load_callbacks()
+            args.callbacks = load_callbacks()
 
-    # # If you want to change the logger's saving folder
-    # logger = TensorBoardLogger(save_dir='kfold_log', name=args.log_dir)
-    # args.logger = logger
+            # # If you want to change the logger's saving folder
+            # logger = TensorBoardLogger(save_dir='kfold_log', name=args.log_dir)
+            # args.logger = logger
 
-    trainer = Trainer.from_argparse_args(args)
-    trainer.fit(model, data_module)
+            trainer = Trainer.from_argparse_args(args)
+            trainer.fit(model, data_module)
 
 
 if __name__ == '__main__':

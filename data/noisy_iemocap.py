@@ -12,26 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-import os.path as op
+import json
+from pathlib import Path
 import numpy as np
 import pickle as pkl
-import torch.utils.data as data
-
-from torchvision import transforms
+from tqdm import tqdm
+import soundfile as sf
+import random
+from torch.utils.data.dataloader import default_collate
+from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 
 
-class NoisyIemocap(data.Dataset):
-    def __init__(self, data_dir=r'data/ref',
+class NoisyIemocap(Dataset):
+    def __init__(self, data_dir=r'source/noise_iemocap',
+                 noise_type='NPARK', 
+                 noise_level=2,
+                 maxseqlen=160000,
                  class_num=4,
-                 train=True,
+                 label_sess_no=1,
+                 mode='train',
                  no_augment=True,
                  aug_prob=0.5):
         # Set all input args as attributes
         self.__dict__.update(locals())
-        self.aug = train and not no_augment
-
+        self.aug = mode=='train' and not no_augment
         self.check_files()
 
     def check_files(self):
@@ -39,10 +44,65 @@ class NoisyIemocap(data.Dataset):
         # You can choose to scan a folder, or load a file list pickle
         # file, or any other formats. The only thing you need to gua-
         # rantee is the `self.path_list` must be given a valid value. 
-        pass
+        with open(Path(self.data_dir).joinpath('labels_sess', f'label_{self.label_sess_no}.json'), 'r') as f:
+            metainfo = json.load(f) #{wavname: {emotion: number}} or {wavname: emotion}
 
+        if self.mode == 'train':
+            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) for x in metainfo['Train'].keys()]
+            self.dataset = t_dataset[:int(0.9*len(t_dataset))]
+        elif self.mode == 'valid':
+            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) for x in metainfo['Train'].keys()]
+            self.dataset = t_dataset[int(0.9*len(t_dataset)):]
+        else:
+            self.dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) for x in metainfo['Test'].keys()]
+        #Print statistics:
+        print(f'Total {len(self.dataset)} examples')
+
+        self.lengths = []
+        print ("Loading over the dataset once...")
+        for dataname in tqdm(self.dataset):
+            wav, _sr = sf.read(dataname)
+            self.lengths.append(len(wav))
+
+        avglen = float(sum(self.lengths)) / len(self.lengths) / 16000
+        print (f"Average duration of audio: {np.round(avglen, decimals=4)} sec")
+        
     def __len__(self):
-        pass
+        return len(self.dataset)
 
     def __getitem__(self, idx):
-        pass
+        dataname = self.dataset[idx]
+        wav, _sr = sf.read(dataname)
+        return wav.astype(np.float32)
+
+    def seqCollate(self, batch):
+        getlen = lambda x: x.shape[0]
+        max_seqlen = max(map(getlen, batch))
+        target_seqlen = min(self.maxseqlen, max_seqlen)
+        def trunc(x):
+            if x.shape[0] >= target_seqlen:
+                #RandomCrop
+                start_point = random.randint(0, x.shape[0] - target_seqlen)
+                x = x[start_point: start_point+target_seqlen]
+                output_length = target_seqlen
+            else:
+                output_length = x.shape[0]
+                over = target_seqlen - x.shape[0]
+                x = np.pad(x, [0, over])
+            ret = (x, output_length)
+            return ret
+        batch = list(map(trunc, batch))
+        return default_collate(batch)
+
+if __name__ == '__main__':
+    data = NoisyIemocap()
+    dataloader = DataLoader(data, batch_size=16, num_workers=0, shuffle=True, collate_fn=data.seqCollate)
+    from tqdm import tqdm
+    with tqdm(dataloader) as td:
+        for batch_data in td:
+            audio, labels = batch_data
+
+            print(audio.shape)
+            print(labels.shape)
+
+            break
