@@ -53,13 +53,13 @@ class DInterface(pl.LightningDataModule):
     #     return DataLoader(self.trainset, batch_size=self.batch_size, num_workers=self.num_workers, sampler = sampler)
 
     def train_dataloader(self):
-        return DataLoader(self.trainset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
+        return DataLoader(self.trainset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self.trainset.seqCollate, shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.valset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
+        return DataLoader(self.valset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self.valset.seqCollate, shuffle=False)
 
     def test_dataloader(self):
-        return DataLoader(self.testset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
+        return DataLoader(self.testset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self.testset.seqCollate, shuffle=False)
 
     def load_data_module(self):
         name = self.dataset

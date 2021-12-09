@@ -15,6 +15,7 @@
 import json
 from pathlib import Path
 import numpy as np
+import torch
 import pickle as pkl
 from tqdm import tqdm
 import soundfile as sf
@@ -31,12 +32,11 @@ class NoisyIemocap(Dataset):
                  maxseqlen=160000,
                  class_num=4,
                  label_sess_no=1,
-                 mode='train',
-                 no_augment=True,
-                 aug_prob=0.5):
+                 mode='train'
+                 ):
         # Set all input args as attributes
         self.__dict__.update(locals())
-        self.aug = mode=='train' and not no_augment
+        self.label2idx = {'anger': 0, 'happy': 1, 'neutral': 2, 'sad': 3}
         self.check_files()
 
     def check_files(self):
@@ -48,22 +48,22 @@ class NoisyIemocap(Dataset):
             metainfo = json.load(f) #{wavname: {emotion: number}} or {wavname: emotion}
 
         if self.mode == 'train':
-            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav'))
-                                    for x in metainfo['Train'].keys()]
+            t_dataset = [(str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(n).stem+'_n.wav')), self.label2idx[l])
+                                    for n,l in metainfo['Train'].items()]
             self.dataset = t_dataset[:int(0.9*len(t_dataset))]
         elif self.mode == 'valid':
-            t_dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) 
-                                    for x in metainfo['Train'].keys()]
+            t_dataset = [(str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(n).stem+'_n.wav')), self.label2idx[l])
+                                    for n,l in metainfo['Train'].items()]
             self.dataset = t_dataset[int(0.9*len(t_dataset)):]
         else:
-            self.dataset = [str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(x).stem+'_n.wav')) 
-                                    for x in metainfo['Test'].keys()]
+            self.dataset = [(str(Path(self.data_dir).joinpath(f'{self.noise_type}-{self.noise_level}', Path(n).stem+'_n.wav')), self.label2idx[l])
+                                    for n,l in metainfo['Test'].items()]
         #Print statistics:
         print(f'Total {len(self.dataset)} examples')
 
         self.lengths = []
         print ("Loading over the dataset once...")
-        for dataname in tqdm(self.dataset):
+        for dataname, _ in tqdm(self.dataset):
             wav, _sr = sf.read(dataname)
             self.lengths.append(len(wav))
 
@@ -74,38 +74,24 @@ class NoisyIemocap(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        dataname = self.dataset[idx]
+        dataname, label = self.dataset[idx]
         wav, _sr = sf.read(dataname)
-        return wav.astype(np.float32)
+        return wav.astype(np.float32), label
 
     def seqCollate(self, batch):
-        getlen = lambda x: x.shape[0]
+        getlen = lambda x: x[0].shape[0]
         max_seqlen = max(map(getlen, batch))
         target_seqlen = min(self.maxseqlen, max_seqlen)
         def trunc(x):
-            if x.shape[0] >= target_seqlen:
-                #RandomCrop
-                start_point = random.randint(0, x.shape[0] - target_seqlen)
-                x = x[start_point: start_point+target_seqlen]
+            x = list(x)
+            if x[0].shape[0] >= target_seqlen:
+                x[0] = x[0][:target_seqlen]
                 output_length = target_seqlen
             else:
-                output_length = x.shape[0]
-                over = target_seqlen - x.shape[0]
-                x = np.pad(x, [0, over])
-            ret = (x, output_length)
+                output_length = x[0].shape[0]
+                over = target_seqlen - x[0].shape[0]
+                x[0] = np.pad(x[0], [0, over])
+            ret = (x[0], output_length, x[1])
             return ret
         batch = list(map(trunc, batch))
         return default_collate(batch)
-
-if __name__ == '__main__':
-    data = NoisyIemocap()
-    dataloader = DataLoader(data, batch_size=16, num_workers=0, shuffle=True, collate_fn=data.seqCollate)
-    from tqdm import tqdm
-    with tqdm(dataloader) as td:
-        for batch_data in td:
-            audio, labels = batch_data
-
-            print(audio.shape)
-            print(labels.shape)
-
-            break

@@ -21,6 +21,7 @@
 """
 import os
 import numpy as np
+from pathlib import Path
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning import Trainer
@@ -56,16 +57,16 @@ def load_callbacks():
 
 
 def main(args):
-    pl.seed_everything(args.seed)
-
+    args.labeldir = str(Path(args.data_dir).joinpath('labels_sess'))
     nfolds = len(os.listdir(args.labeldir))
     for foldlabel in os.listdir(args.labeldir):
         assert foldlabel[-5:] == '.json'
 
-    metrics, confusion = np.zeros((4, args.num_exps, nfolds)), 0.
-    for exp in range(args.num_exps):
+    metrics, confusion = np.zeros((4, len(args.seeds), nfolds)), 0.
+    for exp, seed in enumerate(args.seeds):
+        pl.seed_everything(seed)
         for ifold, foldlabel in enumerate(os.listdir(args.labeldir)):
-            print (f"Running experiment {exp+1} / {args.num_exps}, fold {ifold+1} / {nfolds}...")
+            print (f"Running experiment {exp+1} / {len(args.seeds)}, fold {ifold+1} / {nfolds}...")
             args.label_sess_no = ifold + 1
             load_path = load_model_path_by_args(args)
             data_module = DInterface(**vars(args))
@@ -91,11 +92,15 @@ if __name__ == '__main__':
     # Basic Training Control
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--num_workers', default=8, type=int)
-    parser.add_argument('--seed', default=1234, type=int)
-    parser.add_argument('--lr', default=1e-3, type=float)
+    parser.add_argument('--seeds', default=[111,1111,11111], type=list)
+
+    parser.add_argument('--weight_decay_pretrain', default=2e-5, type=float)
+    parser.add_argument('--learning_rate_pretrain', default=4e-6, type=float)
+    parser.add_argument('--weight_decay_other', default=2e-5, type=float)
+    parser.add_argument('--learning_rate_other', default=2e-4, type=float)
 
     # LR Scheduler
-    parser.add_argument('--lr_scheduler', choices=['step', 'cosine'], type=str)
+    parser.add_argument('--lr_scheduler', default=None, choices=['step', 'cosine'], type=str)
     parser.add_argument('--lr_decay_steps', default=20, type=int)
     parser.add_argument('--lr_decay_rate', default=0.5, type=float)
     parser.add_argument('--lr_decay_min_lr', default=1e-5, type=float)
@@ -108,24 +113,26 @@ if __name__ == '__main__':
 
     # Training Info
     parser.add_argument('--dataset', default='noisy_iemocap', type=str)
-    parser.add_argument('--data_dir', default='ref/data', type=str)
-    parser.add_argument('--model_name', default='standard_net', type=str)
-    parser.add_argument('--loss', default='bce', type=str)
-    parser.add_argument('--weight_decay', default=1e-5, type=float)
-    parser.add_argument('--no_augment', action='store_true')
+    parser.add_argument('--data_dir', default='source/noise_iemocap', type=str)
+    parser.add_argument('--noise_type', default='NPARK', type=str)
+    parser.add_argument('--noise_level', default=2, type=int)
+    parser.add_argument('--maxseqlen', default=160000, type=int)
+    parser.add_argument('--class_num', default=4, type=int)
+    parser.add_argument('--label_sess_no', default=4, type=int)
+    parser.add_argument('--model_name', default='wav2vec2_baseline', type=str)
     parser.add_argument('--log_dir', default='lightning_logs', type=str)
+
     
     # Model Hyperparameters
-    parser.add_argument('--hid', default=64, type=int)
-    parser.add_argument('--block_num', default=8, type=int)
-    parser.add_argument('--in_channel', default=3, type=int)
-    parser.add_argument('--layer_num', default=5, type=int)
+    parser.add_argument('--use_weighted_layer_sum', default=True, type=bool)
+    parser.add_argument('--model_type', default='dense', type=str)
+    parser.add_argument('--hidden_size', default=128, type=int)
+    parser.add_argument('--num_labels', default=4, type=int)
+    parser.add_argument('--freeze', default=True, type=bool)
 
     # Other
-    parser.add_argument('--aug_prob', default=0.5, type=float)
-
-    parser = Trainer.add_argparse_args(
-        parser.add_argument_group(title="pl.Trainer args"))
+    parser.add_argument_group(title="pl.Trainer args")
+    parser = Trainer.add_argparse_args(parser)
 
     # Reset Some Default Trainer Arguments' Default Values
     parser.set_defaults(max_epochs=100)

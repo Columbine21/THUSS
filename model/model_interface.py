@@ -24,7 +24,7 @@ import pytorch_lightning as pl
 
 
 class MInterface(pl.LightningModule):
-    def __init__(self, model_name, loss, lr, **kargs):
+    def __init__(self, model_name, **kargs):
         super().__init__()
         self.save_hyperparameters()
         self.load_model()
@@ -32,7 +32,7 @@ class MInterface(pl.LightningModule):
         self.valid_met = ConfusionMetrics(self.hparams.num_labels)
         self.test_met = ConfusionMetrics(self.hparams.num_labels)
 
-    def forward(self, audio):
+    def forward(self, audio, audio_length):
         return self.model(audio)
 
     def training_step(self, batch, batch_idx):
@@ -43,9 +43,9 @@ class MInterface(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        input_ids, input_mask, segment_ids, labels = batch
+        audio, labels = batch
         labels = labels.squeeze()
-        out = self(input_ids, input_mask, segment_ids).logits
+        out = self(audio)
         loss = self.loss_function(out, labels)
         out_digit = out.argmax(axis=1)
 
@@ -97,20 +97,34 @@ class MInterface(pl.LightningModule):
 
     def configure_optimizers(self):
         # OPTIMIZER: finetune Bert Parameters.
-        bert_no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-        bert_params = list(self.model.clf.bert.named_parameters())
+        pretrain_no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+        pretrain_params = list(self.model.wav2vec2.named_parameters())
 
-        bert_params_decay = [p for n, p in bert_params if not any(nd in n for nd in bert_no_decay)]
-        bert_params_no_decay = [p for n, p in bert_params if any(nd in n for nd in bert_no_decay)]
-        model_params_other = [p for n, p in list(self.model.named_parameters()) if 'bert' not in n]
+        pretrain_params_decay = [p for n, p in pretrain_params if not any(nd in n for nd in pretrain_no_decay)]
+        pretrain_params_no_decay = [p for n, p in pretrain_params if any(nd in n for nd in pretrain_no_decay)]
+        model_params_other = [p for n, p in list(self.model.named_parameters()) if 'wav2vec2' not in n]
 
         optimizer_grouped_parameters = [
-                {'params': bert_params_decay, 'weight_decay': self.hparams.weight_decay_bert, 'lr': self.hparams.learning_rate_bert},
-                {'params': bert_params_no_decay, 'weight_decay': 0.0, 'lr': self.hparams.learning_rate_bert},
+                {'params': pretrain_params_decay, 'weight_decay': self.hparams.weight_decay_pretrain, 'lr': self.hparams.learning_rate_pretrain},
+                {'params': pretrain_params_no_decay, 'weight_decay': 0.0, 'lr': self.hparams.learning_rate_pretrain},
                 {'params': model_params_other, 'weight_decay': self.hparams.weight_decay_other, 'lr': self.hparams.learning_rate_other}
             ]
         optimizer = AdamW(optimizer_grouped_parameters)
-        return optimizer
+
+        if self.hparams.lr_scheduler is None:
+            return optimizer
+        else:
+            if self.hparams.lr_scheduler == 'step':
+                scheduler = lrs.StepLR(optimizer,
+                                       step_size=self.hparams.lr_decay_steps,
+                                       gamma=self.hparams.lr_decay_rate)
+            elif self.hparams.lr_scheduler == 'cosine':
+                scheduler = lrs.CosineAnnealingLR(optimizer,
+                                                  T_max=self.hparams.lr_decay_steps,
+                                                  eta_min=self.hparams.lr_decay_min_lr)
+            else:
+                raise ValueError('Invalid lr_scheduler type!')
+            return [optimizer], [scheduler]
 
     def configure_loss(self):
         self.loss_function = F.cross_entropy
