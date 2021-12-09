@@ -85,14 +85,29 @@ def main(args):
 
             trainer = Trainer.from_argparse_args(args)
             trainer.fit(model, data_module)
-
+            trainer.test(model, data_module, ckpt_path="best")
+            met = model.test_met
+            metrics[:, exp, ifold] = np.array([met.uar*100, met.war*100, met.macroF1*100, met.microF1*100])
+            confusion += met.m
+    outputstr = "+++ FINAL SUMMARY +++\n"
+    for nm, metric in zip(('UAR [%]', 'WAR [%]', 'macroF1 [%]', 'microF1 [%]'), metrics):
+        outputstr += f"Mean {nm}: {np.mean(metric):.2f}\n"
+        outputstr += f"Fold Std. {nm}: {np.mean(np.std(metric, 1)):.2f}\n"
+        outputstr += f"Fold Median {nm}: {np.mean(np.median(metric, 1)):.2f}\n"
+        outputstr += f"Run Std. {nm}: {np.std(np.mean(metric, 1)):.2f}\n"
+        outputstr += f"Run Median {nm}: {np.median(np.mean(metric, 1)):.2f}\n"
+    if args.log_dir:
+        with open(Path(args.log_dir).joinpath('result.txt'), 'w') as f:
+            f.write(outputstr)
+    else:
+        print(outputstr)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     # Basic Training Control
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--num_workers', default=8, type=int)
-    parser.add_argument('--seeds', default=[111,1111,11111], type=list)
+    parser.add_argument('--seeds', default=[1111], type=list)
 
     parser.add_argument('--weight_decay_pretrain', default=2e-5, type=float)
     parser.add_argument('--learning_rate_pretrain', default=4e-6, type=float)
@@ -118,7 +133,6 @@ if __name__ == '__main__':
     parser.add_argument('--noise_level', default=2, type=int)
     parser.add_argument('--maxseqlen', default=128000, type=int)
     parser.add_argument('--class_num', default=4, type=int)
-    parser.add_argument('--label_sess_no', default=4, type=int)
     parser.add_argument('--model_name', default='wav2vec2_baseline', type=str)
     parser.add_argument('--log_dir', default='lightning_logs', type=str)
 

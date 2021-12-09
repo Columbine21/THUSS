@@ -29,7 +29,6 @@ class MInterface(pl.LightningModule):
         self.save_hyperparameters()
         self.load_model()
         self.configure_loss()
-        self.valid_met = ConfusionMetrics(self.hparams.num_labels)
         self.test_met = ConfusionMetrics(self.hparams.num_labels)
 
     def forward(self, audio, audio_length):
@@ -39,7 +38,7 @@ class MInterface(pl.LightningModule):
         audio, input_length, labels = batch
         out = self(audio, input_length)
         loss = self.loss_function(out, labels)
-        self.log('loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -81,7 +80,7 @@ class MInterface(pl.LightningModule):
     def on_test_epoch_end(self):
         """Report metrics."""
 
-        self.test_met.WriteConfusionSeaborn(labels=['neg', 'neu', 'pos'], outpath='conf_m.png')
+        self.test_met.WriteConfusionSeaborn(labels=['neg', 'neu', 'pos'], outpath=f'conf_m_{self.hparams.label_sess_no}.png')
         self.log('test_UAR', self.test_met.uar, logger=True)
         self.log('test_WAR', self.test_met.war, logger=True)
         self.log('test_macroF1', self.test_met.macroF1, logger=True)
