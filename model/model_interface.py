@@ -76,7 +76,7 @@ class MInterface(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         # Make the Progress Bar leave there
-        self.print('')
+        print('')
 
     def on_test_epoch_end(self):
         """Report metrics."""
