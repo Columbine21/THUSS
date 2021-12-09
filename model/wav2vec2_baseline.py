@@ -67,16 +67,64 @@ class Wav2vec2Baseline(nn.Module):
         be updated during training. Only the classification head will be updated.
         """
         for param in self.wav2vec2.parameters():
-            param.requires_grad = False        
+            param.requires_grad = False
+
+    def prepare_mask(self, length, shape, dtype, device):
+        #Modified from huggingface
+        mask = torch.zeros(
+            shape, dtype=dtype, device=device
+        )
+        # these two operations makes sure that all values
+        # before the output lengths indices are attended to
+        mask[
+            (torch.arange(mask.shape[0], device=device), length - 1)
+        ] = 1
+        mask = mask.flip([-1]).cumsum(-1).flip([-1]).bool()
+        return mask
+
+    #From huggingface
+    def _get_feat_extract_output_lengths(self, input_length):
+        """
+        Computes the output length of the convolutional layers
+        """
+        def _conv_out_length(input_length, kernel_size, stride):
+            # 1D convolutional layer output length formula taken
+            # from https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
+            return (input_length - kernel_size) // stride + 1
+        for kernel_size, stride in zip(self.wav2vec2.config.conv_kernel, self.wav2vec2.config.conv_stride):
+            input_length = _conv_out_length(input_length, kernel_size, stride)
+        return input_length
+
+    def _get_feature_vector_attention_mask(
+        self, feature_vector_length: int, attention_mask: torch.LongTensor
+    ):
+        # Effectively attention_mask.sum(-1), but not inplace to be able to run
+        # on inference mode.
+        non_padded_lengths = attention_mask.cumsum(dim=-1)[:, -1]
+
+        output_lengths = self._get_feat_extract_output_lengths(non_padded_lengths)
+        output_lengths = output_lengths.to(torch.long)
+
+        batch_size = attention_mask.shape[0]
+
+        attention_mask = torch.zeros(
+            (batch_size, feature_vector_length), dtype=attention_mask.dtype, device=attention_mask.device
+        )
+        # these two operations makes sure that all values before the output lengths idxs are attended to
+        attention_mask[(torch.arange(attention_mask.shape[0], device=attention_mask.device), output_lengths - 1)] = 1
+        attention_mask = attention_mask.flip([-1]).cumsum(-1).flip([-1]).bool()
+        return attention_mask
 
     def forward(
         self, 
         input_values,
-        input_length,
-        attention_mask=None,
+        input_length=None,
         output_hidden_states=None
         ):
         output_hidden_states = True if self.use_weighted_layer_sum else output_hidden_states
+
+        if input_length is not None:
+            attention_mask = self.prepare_mask(input_length, input_values.shape[:2], input_values.dtype, input_values.device)
 
         outputs = self.wav2vec2(
             input_values,

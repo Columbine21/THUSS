@@ -33,19 +33,18 @@ class MInterface(pl.LightningModule):
         self.test_met = ConfusionMetrics(self.hparams.num_labels)
 
     def forward(self, audio, audio_length):
-        return self.model(audio)
+        return self.model(audio, audio_length)
 
     def training_step(self, batch, batch_idx):
-        audio, labels = batch
-        out = self(audio)
+        audio, input_length, labels = batch
+        out = self(audio, input_length)
         loss = self.loss_function(out, labels)
         self.log('loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        audio, labels = batch
-        labels = labels.squeeze()
-        out = self(audio)
+        audio, input_length, labels = batch
+        out = self(audio, input_length)
         loss = self.loss_function(out, labels)
         out_digit = out.argmax(axis=1)
 
@@ -58,9 +57,8 @@ class MInterface(pl.LightningModule):
         return (correct_num, len(out_digit))
 
     def test_step(self, batch, batch_idx):
-        input_ids, input_mask, segment_ids, labels = batch
-        labels = labels.squeeze()
-        out = self(input_ids, input_mask, segment_ids).logits
+        audio, input_length, labels = batch
+        out = self(audio, input_length)
         loss = self.loss_function(out, labels)
         out_digit = out.argmax(axis=1)
 

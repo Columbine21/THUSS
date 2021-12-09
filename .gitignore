@@ -132,3 +132,4 @@ source/demand
 source/iemocap/metalabel.json
 *labels_sess
 source/noise_iemocap/NPARK-2
+lightning_logs

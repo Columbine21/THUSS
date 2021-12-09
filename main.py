@@ -38,7 +38,7 @@ def load_callbacks():
     callbacks.append(plc.EarlyStopping(
         monitor='val_acc',
         mode='max',
-        patience=10,
+        patience=8,
         min_delta=0.001
     ))
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', default='source/noise_iemocap', type=str)
     parser.add_argument('--noise_type', default='NPARK', type=str)
     parser.add_argument('--noise_level', default=2, type=int)
-    parser.add_argument('--maxseqlen', default=160000, type=int)
+    parser.add_argument('--maxseqlen', default=128000, type=int)
     parser.add_argument('--class_num', default=4, type=int)
     parser.add_argument('--label_sess_no', default=4, type=int)
     parser.add_argument('--model_name', default='wav2vec2_baseline', type=str)
