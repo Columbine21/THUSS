@@ -126,6 +126,8 @@ venv.bak/
 dmypy.json
 
 # Pyre type checker
+.vscode
+*.png
 .pyre/
 source/iemocap/Audio_16k
 source/demand

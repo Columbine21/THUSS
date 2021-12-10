@@ -80,7 +80,7 @@ class MInterface(pl.LightningModule):
     def on_test_epoch_end(self):
         """Report metrics."""
 
-        self.test_met.WriteConfusionSeaborn(labels=['neg', 'neu', 'pos'], outpath=f'conf_m_{self.hparams.label_sess_no}.png')
+        self.test_met.WriteConfusionSeaborn(labels=['anger', 'happy', 'neutral', 'sad'], outpath=f'conf_m_{self.hparams.label_sess_no}.png')
         self.log('test_UAR', self.test_met.uar, logger=True)
         self.log('test_WAR', self.test_met.war, logger=True)
         self.log('test_macroF1', self.test_met.macroF1, logger=True)

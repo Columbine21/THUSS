@@ -26,11 +26,10 @@ import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning import Trainer
 import pytorch_lightning.callbacks as plc
-from pytorch_lightning.loggers import TensorBoardLogger
+from copy import deepcopy
 
 from model import MInterface
 from data import DInterface
-from utils import load_model_path_by_args
 
 
 def load_callbacks():
@@ -65,25 +64,17 @@ def main(args):
     metrics, confusion = np.zeros((4, len(args.seeds), nfolds)), 0.
     for exp, seed in enumerate(args.seeds):
         pl.seed_everything(seed)
-        for ifold, foldlabel in enumerate(os.listdir(args.labeldir)):
-            print (f"Running experiment {exp+1} / {len(args.seeds)}, fold {ifold+1} / {nfolds}...")
-            args.label_sess_no = ifold + 1
-            load_path = load_model_path_by_args(args)
-            data_module = DInterface(**vars(args))
+        for ifold, _ in enumerate(os.listdir(args.labeldir)):
 
-            if load_path is None:
-                model = MInterface(**vars(args))
-            else:
-                model = MInterface(**vars(args))
-                args.resume_from_checkpoint = load_path
-        
-            args.callbacks = load_callbacks()
+            args_cur = deepcopy(args)
+            print (f"Running experiment {exp+1} / {len(args_cur.seeds)}, fold {ifold+1} / {nfolds}...")
+            args_cur.label_sess_no = ifold + 1
 
-            # # If you want to change the logger's saving folder
-            # logger = TensorBoardLogger(save_dir='kfold_log', name=args.log_dir)
-            # args.logger = logger
+            data_module = DInterface(**vars(args_cur))
+            model = MInterface(**vars(args_cur))     
 
-            trainer = Trainer.from_argparse_args(args)
+            args_cur.callbacks = load_callbacks()
+            trainer = Trainer.from_argparse_args(args_cur)
             trainer.fit(model, data_module)
             trainer.test(model, data_module, ckpt_path="best")
             met = model.test_met
@@ -106,7 +97,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     # Basic Training Control
     parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--num_workers', default=8, type=int)
+    parser.add_argument('--num_workers', default=0, type=int)
     parser.add_argument('--seeds', default=[1111], type=list)
 
     parser.add_argument('--weight_decay_pretrain', default=2e-5, type=float)
