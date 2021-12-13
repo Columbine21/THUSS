@@ -1,4 +1,3 @@
-from unicodedata import bidirectional
 import torch
 from torch import nn
 
@@ -36,21 +35,20 @@ class Wav2vec2Baseline(nn.Module):
                 nn.ReLU(),
                 nn.Dropout(p=0.2),
             )
+            self.classifier = nn.Linear(hidden_size, num_labels)
         elif model_type == 'lstm':
             self.projector = nn.Sequential (
-                nn.Linear(hidden_size, hidden_size), 
+                nn.Linear(self.wav2vec2.config.hidden_size, hidden_size), 
                 nn.ReLU(),
                 nn.Dropout(p=0.2),
                 nn.LSTM(input_size=hidden_size, hidden_size=hidden_size, num_layers=1, bidirectional=True)
             )
+            self.classifier = nn.Linear(hidden_size*2, num_labels)
         elif model_type == 'fusion':
             pass
         else:
             raise ValueError(
                 f'Invalid Module Type {model_type}!')
-
-        self.classifier = nn.Linear(hidden_size, num_labels)
-
         if freeze:
             self.freeze_base_model()
 
@@ -137,12 +135,18 @@ class Wav2vec2Baseline(nn.Module):
         norm_weights = nn.functional.softmax(self.layer_weights, dim=-1)
         hidden_states = (hidden_states * norm_weights.view(-1, 1, 1)).sum(dim=1)
 
-        hidden_states = self.projector(hidden_states)
+        if self.model_type == 'dense':
+            hidden_states = self.projector(hidden_states)
+        elif self.model_type == 'lstm':
+            hidden_states, _ = self.projector(hidden_states)
+        elif self.model_type == 'fusion':
+            pass
+
         if attention_mask is None:
             pooled_output = hidden_states.mean(dim=1)
         else:
             padding_mask = self._get_feature_vector_attention_mask(hidden_states.shape[1], attention_mask)
-            hidden_states[~padding_mask] = 0.0
+            hidden_states = hidden_states * padding_mask.unsqueeze(-1)
             pooled_output = hidden_states.sum(dim=1) / padding_mask.sum(dim=1).view(-1, 1)
 
         return self.classifier(pooled_output)
