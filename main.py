@@ -125,7 +125,7 @@ if __name__ == '__main__':
     parser.add_argument('--maxseqlen', default=128000, type=int)
     parser.add_argument('--class_num', default=4, type=int)
     parser.add_argument('--model_name', default='wav2vec2_baseline', type=str)
-    parser.add_argument('--log_dir', default='lightning_logs', type=str)
+    parser.add_argument('--log_dir', default='/home/sharing/disk2/yuanziqi/Project/THU-SER-CODE/noise_iemocap/lightning_logs', type=str)
 
     
     # Model Hyperparameters
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_type', default='dense', type=str)
     parser.add_argument('--hidden_size', default=128, type=int)
     parser.add_argument('--num_labels', default=4, type=int)
-    parser.add_argument('--freeze', default=True, type=bool)
+    parser.add_argument('--freeze', default=False, type=bool)
 
     # Other
     parser.add_argument_group(title="pl.Trainer args")
