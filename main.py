@@ -58,6 +58,7 @@ def load_callbacks():
 def main(args):
     args.labeldir = str(Path(args.data_dir).joinpath('labels_sess'))
     nfolds = len(os.listdir(args.labeldir))
+    Path(args.result_dir).joinpath(f'{args.model_type}_{args.noise_type.lower()}_{args.noise_level}').mkdir(exist_ok=True)
     for foldlabel in os.listdir(args.labeldir):
         assert foldlabel[-5:] == '.json'
 
@@ -88,7 +89,7 @@ def main(args):
         outputstr += f"Run Std. {nm}: {np.std(np.mean(metric, 1)):.2f}\n"
         outputstr += f"Run Median {nm}: {np.median(np.mean(metric, 1)):.2f}\n"
     if args.log_dir:
-        with open(Path(args.log_dir).joinpath('result.txt'), 'w') as f:
+        with open(Path(args.result_dir).joinpath(f'{args.model_type}_{args.noise_type.lower()}_{args.noise_level}','result.txt'), 'w') as f:
             f.write(outputstr)
     else:
         print(outputstr)
@@ -126,6 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--class_num', default=4, type=int)
     parser.add_argument('--model_name', default='wav2vec2_baseline', type=str)
     parser.add_argument('--log_dir', default='/home/sharing/disk2/yuanziqi/Project/THU-SER-CODE/noise_iemocap/lightning_logs', type=str)
+    parser.add_argument('--result_dir', default='result_new', type=str)
 
     
     # Model Hyperparameters
